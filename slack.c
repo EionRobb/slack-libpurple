@@ -139,6 +139,32 @@ static void slack_conversation_created(PurpleConversation *conv, void *data) {
 	slack_get_conversation_unread(sa, &user->object);
 }
 
+static guint slack_conversation_send_typing(PurpleConversation *conv, PurpleTypingState state, gpointer userdata)
+{
+	PurpleConnection *gc = purple_conversation_get_gc(conv);
+	
+	if (!gc || !PURPLE_CONNECTION_IS_CONNECTED(gc)) {
+		return 0;
+	}
+	if (!purple_strequal(purple_plugin_get_id(purple_connection_get_prpl(gc)), SLACK_PLUGIN_ID)) {
+		return 0;
+	}
+	
+	SlackAccount *sa = gc->proto_data;
+
+	if (state != PURPLE_TYPING)
+		return 0;
+
+	SlackObject *obj = slack_conversation_get_conversation(sa, conv);
+	
+	if (!obj)
+		return 0;
+
+	slack_rtm_send(sa, NULL, NULL, "typing", "channel", slack_conversation_id(obj), NULL);
+	
+	return 3;
+}
+
 static void slack_conversation_updated(PurpleConversation *conv, PurpleConvUpdateType type, void *data) {
 	/* TODO: channel TYPING? */
 	if (type != PURPLE_CONV_UPDATE_UNSEEN)
@@ -162,6 +188,8 @@ static void slack_login(PurpleAccount *account) {
 				gc->prpl, PURPLE_CALLBACK(slack_conversation_created), NULL);
 		purple_signal_connect(purple_conversations_get_handle(), "conversation-updated",
 				gc->prpl, PURPLE_CALLBACK(slack_conversation_updated), NULL);
+		purple_signal_connect(purple_conversations_get_handle(), "chat-conversation-typing", 
+				gc->prpl, PURPLE_CALLBACK(slack_conversation_send_typing), NULL);
 	}
 
 	const gchar *token = purple_account_get_string(account, "api_token", NULL);

@@ -488,6 +488,21 @@ gboolean slack_message(SlackAccount *sa, json_value *json) {
 	return TRUE;
 }
 
+typedef struct {
+	PurpleConvChat *chat;
+	gchar *name;
+} SlackChatBuddy;
+
+static gboolean slack_unset_typing_cb(SlackChatBuddy *chatbuddy) {
+	PurpleConvChatBuddy *cb = purple_conv_chat_cb_find(chatbuddy->chat, chatbuddy->name);
+	if (cb) {
+		purple_conv_chat_user_set_flags(chatbuddy->chat, chatbuddy->name, cb->flags & ~PURPLE_CBFLAGS_TYPING);
+	}
+	
+	g_free(chatbuddy->name);
+	return FALSE;
+}
+
 void slack_user_typing(SlackAccount *sa, json_value *json) {
 	const char *user_id    = json_get_prop_strptr(json, "user");
 	const char *channel_id = json_get_prop_strptr(json, "channel");
@@ -499,15 +514,28 @@ void slack_user_typing(SlackAccount *sa, json_value *json) {
 		serv_got_typing(sa->gc, user->object.name, 4, PURPLE_TYPING);
 	} else if (user && (chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, channel_id))) {
 		/* Channel */
-#if 0
 		PurpleConvChat *chat = slack_channel_get_conversation(sa, chan);
 		PurpleConvChatBuddy *cb = chat ? purple_conv_chat_cb_find(chat, user->object.name) : NULL;
 		if (cb) {
 			purple_conv_chat_user_set_flags(chat, user->object.name, cb->flags | PURPLE_CBFLAGS_TYPING);
-			/* TODO: clear typing after 4 seconds (like purple_conv_im typing_timeout), but only if no more recent update, and don't crash if we're gone:
-			 * schedule a timeout and set a cb->attribute with the current time? keep a list of current typing chat/user pairs? */
+			
+			guint timeout = GPOINTER_TO_INT(g_dataset_get_data(cb, "typing_timeout"));
+			SlackChatBuddy *chatbuddy = g_dataset_get_data(cb, "chatbuddy");
+			if (timeout) {
+				purple_timeout_remove(timeout);
+				if (chatbuddy) {
+					g_free(chatbuddy->name);
+					g_free(chatbuddy);
+				}
+			}
+			chatbuddy = g_new0(SlackChatBuddy, 1);
+			chatbuddy->chat = chat;
+			chatbuddy->name = g_strdup(user->object.name);
+			timeout = purple_timeout_add_seconds(4, (GSourceFunc)slack_unset_typing_cb, chatbuddy);
+			
+			g_dataset_set_data(cb, "typing_timeout", GINT_TO_POINTER(timeout));
+			g_dataset_set_data(cb, "chatbuddy", chatbuddy);
 		}
-#endif
 	} else {
 		purple_debug_warning("slack", "Unhandled typing: %s@%s\n", user_id, channel_id);
 	}
