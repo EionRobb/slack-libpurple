@@ -79,7 +79,7 @@ static void api_cb(G_GNUC_UNUSED PurpleUtilFetchUrlData *fetch, gpointer data, c
 static gboolean api_retry(gpointer data) {
 	SlackAPICall *call = data;
 	call->fetch = purple_util_fetch_url_request_len_with_account(call->sa->account,
-			call->url, TRUE, NULL, TRUE, NULL, FALSE, 4096*1024,
+			call->url, FALSE, NULL, TRUE, NULL, FALSE, 4096*1024,
 			api_cb, call);
 	return FALSE;
 }

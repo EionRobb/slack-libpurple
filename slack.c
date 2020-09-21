@@ -209,6 +209,12 @@ static void slack_login(PurpleAccount *account) {
 		 * addresses, so we manually split it here.
 		 */
 		host = g_strstr_len(username, -1, "@");
+		if (host) {
+			gchar *percent = g_strrstr(host, "%");
+			if (percent) {
+				*percent = '\0';
+			}
+		}
 	}
 
 	/* if we had a legacy token and it failed to find a host, try the % as well
@@ -246,7 +252,9 @@ static void slack_login(PurpleAccount *account) {
 		 */
 		sa->email = g_strdup(purple_account_get_username(account));
 		gchar *percent = g_strrstr(sa->email, "%");
-		*percent = '\0';
+		if (percent) {
+			*percent = '\0';
+		}
 	}
 
 	sa->rtm_call = g_hash_table_new_full(g_direct_hash,        g_direct_equal,        NULL, (GDestroyNotify)slack_rtm_cancel);
